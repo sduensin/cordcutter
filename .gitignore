@@ -1,0 +1,9 @@
+*~
+*.txt
+*.conf
+*.ovpn
+*.crt
+*.key
+*.log
+TestVPNs/
+test.sh

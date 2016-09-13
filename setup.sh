@@ -228,6 +228,7 @@ if [ ! -e ${CFG} ]; then
 	# No pause needed, start script does it for us.
 	${BASE}/scripts/stop-transmission.sh >> ${LOG} 2>&1
 	sleep 1
+	# TODO See if we can prime this config
 	sed -i 's/"lpd-enabled": false/"lpd-enabled": true/g' ${CFG}
 	sed -i 's/"speed-limit-up": 100/"speed-limit-up": 200/g' ${CFG}
 	sed -i 's/"speed-limit-up-enabled": false/"speed-limit-up-enabled": true/g' ${CFG}
@@ -261,6 +262,7 @@ if [ ! -e ${DATA}/process.sh ]; then
 			transmission-remote localhost:8083 -t \${TORRENTID} -r 
 		fi 
 	PROCESS
+	chmod +x ${DATA}/process.sh
 fi
 # Start and stop the service to create the config file if it doesn't exist.
 CFG=${DATA}/config.ini
@@ -269,6 +271,7 @@ if [ ! -e ${CFG} ]; then
 	sleep 2
 	${BASE}/scripts/stop-SickRage.sh >> ${LOG} 2>&1
 	sleep 1
+	# TODO See if we can prime this config
 	iniSet ${CFG} rarbg 1
 	iniSet ${CFG} torrentz 1
 	iniSet ${CFG} elitetorrent 1
@@ -318,7 +321,103 @@ fi
 
 
 # === Couch Potato ===
+checkForGit https://github.com/CouchPotato CouchPotatoServer
+pip install lxml --cache-dir ${PIP}/_cache --target ${PIP} >> ${LOG} 2>&1
+DATA=${BASE}/data/CouchPotatoServer
+mkdir -p ${DATA}
+mkdir -p ${BASE}/mnt/Movies
+# Startup and shutdown scripts.
+cat<<-STARTCOUCHPOTATO > ${BASE}/scripts/start-CouchPotatoServer.sh
+	#!/bin/bash
+	cd ${BASE}/CouchPotatoServer
+	PYTHONPATH="${PIP}" python CouchPotato.py --daemon --pid_file ${DATA}/CouchPotatoServer.pid --data_dir ${DATA} 
+STARTCOUCHPOTATO
+chmod +x ${BASE}/scripts/start-CouchPotatoServer.sh
+cat<<-STOPCOUCHPOTATO > ${BASE}/scripts/stop-CouchPotatoServer.sh
+	#!/bin/bash
+	kill \$(cat ${DATA}/CouchPotatoServer.pid)
+STOPCOUCHPOTATO
+chmod +x ${BASE}/scripts/stop-CouchPotatoServer.sh
+# Prime the settings file if it doesn't exist.
+CFG=${DATA}/settings.conf
+if [ ! -e ${CFG} ]; then
+	cat<<-SETTINGS > ${CFG}
+		[core]
+		launch_browser = False
+		port = 8082
+		api_key = 5bf1b41b945d444ba9050e88869e6e64
+		dark_theme = 1
+		show_wizard = 0
+		data_dir = ${DATA}
 
+		[renamer]
+		from = ${BASE}/mnt/Torrents/Complete/
+		to = ${BASE}/mnt/Movies/
+		cleanup = 1
+		enabled = 1
+		unrar = 1
+		default_file_action = move
+		file_action = move
+		nfo_name = <filename>.<ext>-orig
+
+		[subtitle]
+		languages = en
+		enabled = 1
+
+		[blackhole]
+		enabled = 0
+
+		[transmission]
+		username = transmission
+		enabled = 1
+		host = http://localhost:8083
+		password = transmission
+
+		[newznab]
+		enabled = 0
+
+		[kickasstorrents]
+		seed_time = 0
+		seed_ratio = 0
+
+		[magnetdl]
+		seed_time = 0
+		enabled = 1
+		seed_ratio = 0
+
+		[rarbg]
+		enabled = 1
+
+		[thepiratebay]
+		seed_time = 0
+		enabled = 1
+		seed_ratio = 0
+
+		[torrentz]
+		seed_time = 0
+		seed_ratio = 0
+
+		[searcher]
+		preferred_method = torrent
+
+		[updater]
+		automatic = 0
+
+		[xbmc]
+		meta_extra_fanart = 1
+		meta_enabled = 1
+		meta_logo = 1
+		meta_landscape = 1
+		meta_banner = 1
+		meta_clear_art = 1
+		meta_extra_thumbs = 1
+		meta_disc_art = 1
+
+		[moviesearcher]
+		cron_hour = *
+		run_on_launch = 1
+	SETTINGS
+fi
 
 # === HTPC Manager ===
 checkForGit https://github.com/Hellowlol HTPC-Manager
@@ -368,6 +467,12 @@ if [ ! -e ${DATA}/database.db ]; then
 	htpcDB ${DB} "sickrage_enable" "on"
 	htpcDB ${DB} "sickrage_name" "SickRage"
 	htpcDB ${DB} "sickrage_apikey" "95ef1b0d35d02068c9224e90b20cbf58"
+	htpcDB ${DB} "couchpotato_host" "localhost"
+	htpcDB ${DB} "couchpotato_basepath" "/"
+	htpcDB ${DB} "couchpotato_apikey" "5bf1b41b945d444ba9050e88869e6e64"
+	htpcDB ${DB} "couchpotato_port" "8082"
+	htpcDB ${DB} "couchpotato_name" "CouchPotato"
+	htpcDB ${DB} "couchpotato_enable" "on"
 fi
 
 
@@ -486,6 +591,7 @@ cat<<-STOPALL > ${BASE}/stop.sh
 STOPALL
 chmod +x ${BASE}/stop.sh
 
+# TODO Check all startup logs for errors
 
 echo
 echo Finished!

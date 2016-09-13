@@ -70,6 +70,14 @@ function htpcDB() {
 }
 
 
+function iniSet() {
+	FILE="$1"
+	KEY="$2"
+	VAL="$3"
+	sed -i "s#^${KEY} =.*#${KEY} = $(printf '%q' ${VAL})#g" ${FILE}
+}
+
+
 # Ports:
 #   8080 - HTPC Manager Web UI
 #   8081 - SickRage Web UI
@@ -107,7 +115,7 @@ fi
 
 
 # For setup script
-checkForPackages git
+checkForPackages git python2.7 python-pip
 
 # For OpenVPN
 checkForPackages openvpn
@@ -115,16 +123,21 @@ checkForPackages openvpn
 # For Transmission
 checkForPackages transmission-daemon
 
+# For SickRage
+checkForPackages unrar
+
+# For CouchPotato
+
 # For HTPC Manager
-checkForPackages python2.7 python-pil python-psutil smartmontools sqlite
+checkForPackages smartmontools sqlite libffi-dev libssl-dev
 
 
-# Do we have the initial installation?
-if [ ! -d ${BASE}/mnt ]; then
-	echo " - Performing initial installation"
-	mkdir -p ${BASE}/mnt ${BASE}/scripts
-	echo ${RELEASE} > ${BASE}/release
-fi
+echo " - Performing initial installation"
+mkdir -p ${BASE}/{mnt,pip,scripts,data}
+mkdir -p ${BASE}/pip/_cache
+echo ${RELEASE} > ${BASE}/release
+PIP=${BASE}/pip
+pip install pip --cache-dir ${PIP}/_cache --target ${PIP} >> ${LOG} 2>&1
 
 
 # === OpenVPN ===
@@ -221,15 +234,90 @@ if [ ! -e ${CFG} ]; then
 fi
 
 
+# === SickRage ===
+checkForGit https://github.com/SickRage SickRage
+DATA=${BASE}/data/SickRage
+mkdir -p ${DATA}
+mkdir -p ${BASE}/mnt/Shows
+# Startup and shutdown scripts.
+cat<<-STARTSICKRAGE > ${BASE}/scripts/start-SickRage.sh
+	#!/bin/bash
+	cd ${BASE}/SickRage
+	python SickBeard.py --nolaunch --daemon --pidfile ${DATA}/SickRage.pid --port 8081 --datadir ${DATA} 
+STARTSICKRAGE
+chmod +x ${BASE}/scripts/start-SickRage.sh
+cat<<-STOPSICKRAGE > ${BASE}/scripts/stop-SickRage.sh
+	#!/bin/bash
+	kill \$(cat ${DATA}/SickRage.pid)
+STOPSICKRAGE
+chmod +x ${BASE}/scripts/stop-SickRage.sh
+# Start and stop the service to create the config file if it doesn't exist.
+CFG=${DATA}/config.ini
+if [ ! -e ${CFG} ]; then
+	${BASE}/scripts/start-SickRage.sh >> ${LOG} 2>&1
+	sleep 2
+	${BASE}/scripts/stop-SickRage.sh >> ${LOG} 2>&1
+	sleep 1
+	iniSet ${CFG} rarbg 1
+	iniSet ${CFG} torrentz 1
+	iniSet ${CFG} elitetorrent 1
+	iniSet ${CFG} bitsnoop 1
+	iniSet ${CFG} nyaatorrents 1
+	iniSet ${CFG} btdigg 1
+	iniSet ${CFG} cpasbien 1
+	iniSet ${CFG} newpct 1
+	iniSet ${CFG} tokyotoshokan 1
+	iniSet ${CFG} limetorrents 1
+	iniSet ${CFG} torrent_host "http://localhost:8083"
+	iniSet ${CFG} torrent_path "/opt/htpc/mnt/Torrents/Complete"
+	iniSet ${CFG} torrent_auth_type none
+	iniSet ${CFG} torrent_username transmission
+	iniSet ${CFG} torrent_password transmission
+	iniSet ${CFG} dailysearch_frequency 10
+	iniSet ${CFG} api_key 95ef1b0d35d02068c9224e90b20cbf58
+	iniSet ${CFG} check_propers_interval 15m
+	iniSet ${CFG} update_frequency 24
+	iniSet ${CFG} process_method move
+	iniSet ${CFG} tv_download_dir "/opt/htpc/mnt/Torrents/Complete"
+	iniSet ${CFG} naming_custom_abd 1
+	iniSet ${CFG} create_missing_show_dirs 1
+	iniSet ${CFG} cur_commit_branch master
+	iniSet ${CFG} root_dirs "0|/opt/htpc/mnt/Shows"
+	iniSet ${CFG} naming_pattern "Season %0S/%SN - %0Sx%0E - %EN"
+	iniSet ${CFG} metadata_kodi "1|1|1|1|1|1|1|1|1|1"
+	iniSet ${CFG} naming_custom_sports 1
+	iniSet ${CFG} randomize_providers 1
+	iniSet ${CFG} process_automatically 1
+	iniSet ${CFG} launch_browser 0
+	iniSet ${CFG} branch master
+	iniSet ${CFG} unpack 1
+	iniSet ${CFG} move_associated_files 1
+	iniSet ${CFG} naming_multi_ep 16
+	iniSet ${CFG} torrent_method transmission
+	iniSet ${CFG} proxy_indexers 0
+	iniSet ${CFG} keep_processed_dir 0
+	iniSet ${CFG} subtitles_history 1
+	iniSet ${CFG} subtitles_hearing_impaired 1
+	iniSet ${CFG} subtitles_languages eng
+	iniSet ${CFG} SUBTITLES_SERVICES_LIST "\"addic7ed,legendastv,opensubtitles,podnapisi,shooter,subscenter,thesubdb,tvsubtitles,itasa\""
+	iniSet ${CFG} use_subtitles 1
+	iniSet ${CFG} SUBTITLES_SERVICES_ENABLED "0|0|0|1|1|1|1|1|0"
+fi
+
+
+# === Couch Potato ===
+
+
 # === HTPC Manager ===
 checkForGit https://github.com/Hellowlol HTPC-Manager
+PYTHONPATH="${PIP}" pip install -r ${BASE}/HTPC-Manager/requirements.txt --cache-dir ${PIP}/_cache --target ${PIP} >> ${LOG} 2>&1
 DATA=${BASE}/data/HTPC-Manager
 mkdir -p ${DATA}
 # Startup and shutdown scripts.
 cat<<-STARTHTPC > ${BASE}/scripts/start-HTPC-Manager.sh
 	#!/bin/bash
 	cd ${BASE}/HTPC-Manager
-	python Htpc.py --daemon --datadir ${DATA} --pid ${DATA}/HTPC-Manager.pid
+	PYTHONPATH="${PIP}" python Htpc.py --daemon --datadir ${DATA} --pid ${DATA}/HTPC-Manager.pid
 STARTHTPC
 chmod +x ${BASE}/scripts/start-HTPC-Manager.sh
 cat<<-STOPHTPC > ${BASE}/scripts/stop-HTPC-Manager.sh
@@ -262,6 +350,12 @@ if [ ! -e ${DATA}/database.db ]; then
 	htpcDB ${DB} "transmission_port" "8083"
 	htpcDB ${DB} "transmission_host" "localhost"
 	htpcDB ${DB} "transmission_username" "transmission"
+	htpcDB ${DB} "sickrage_basepath" "/"
+	htpcDB ${DB} "sickrage_port" "8081"
+	htpcDB ${DB} "sickrage_host" "localhost"
+	htpcDB ${DB} "sickrage_enable" "on"
+	htpcDB ${DB} "sickrage_name" "SickRage"
+	htpcDB ${DB} "sickrage_apikey" "95ef1b0d35d02068c9224e90b20cbf58"
 fi
 
 
@@ -269,7 +363,7 @@ fi
 cat<<-STARTALL > ${BASE}/start.sh
 	#!/bin/bash
 	cd ${BASE}
-	# Clear existing firewall rules.
+	# Clear existing IPv4 firewall rules.
 	iptables -P INPUT ACCEPT
 	iptables -P FORWARD ACCEPT
 	iptables -P OUTPUT ACCEPT
@@ -281,23 +375,57 @@ cat<<-STARTALL > ${BASE}/start.sh
 	iptables -t nat -X
 	iptables -t mangle -F
 	iptables -t mangle -X
-	# Allow loopback device (internal communication).
+	# Clear existing IPv6 firewall rules.
+	ip6tables -P INPUT ACCEPT
+	ip6tables -P FORWARD ACCEPT
+	ip6tables -P OUTPUT ACCEPT
+	ip6tables -F
+	ip6tables -X
+	ip6tables -t raw -F
+	ip6tables -t raw -X
+	ip6tables -t nat -F
+	ip6tables -t nat -X
+	ip6tables -t mangle -F
+	ip6tables -t mangle -X
+	# Allow loopback device IPv4 (internal communication).
 	iptables -A INPUT -i lo -j ACCEPT
 	iptables -A OUTPUT -o lo -j ACCEPT
-	# Allow all local traffic.
-	iptables -A INPUT -s 192.168.0.0/16 -j ACCEPT
-	iptables -A OUTPUT -d 192.168.0.0/16 -j ACCEPT
-	# Allow VPN establishment.
+	# Allow loopback device IPv6 (internal communication).
+	ip6tables -A INPUT -i lo -j ACCEPT
+	ip6tables -A OUTPUT -o lo -j ACCEPT
+	# Allow communications with IPv4 DHCP server.
+	iptables -A OUTPUT -d 255.255.255.255 -j ACCEPT
+	iptables -A INPUT -s 255.255.255.255 -j ACCEPT
+	# Allow all local IPv4 traffic.
+	iptables -A INPUT -s 192.168.0.0/16 -d 192.168.0.0/16 -j ACCEPT
+	iptables -A OUTPUT -s 192.168.0.0/16 -d 192.168.0.0/16 -j ACCEPT
+	iptables -A INPUT -s 10.0.0.0/8 -d 10.0.0.0/8 -j ACCEPT
+	iptables -A OUTPUT -s 10.0.0.0/8 -d 10.0.0.0/8 -j ACCEPT
+	iptables -A INPUT -s 172.16.0.0/12 -d 172.16.0.0/12 -j ACCEPT
+	iptables -A OUTPUT -s 172.16.0.0/12 -d 172.16.0.0/12 -j ACCEPT
+	# Allow established sessions to receive traffic on IPv4.	
+	iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+	# Allow VPN establishment IPv4.
 	iptables -A OUTPUT -p udp --dport ${PORT} -j ACCEPT
 	iptables -A INPUT -p udp --sport ${PORT} -j ACCEPT
-	# Accept all TUN connections (tun = VPN tunnel).
+	# Accept all outbound TUN connections and firewalled input on IPv4 (tun = VPN tunnel).
 	iptables -A OUTPUT -o tun+ -j ACCEPT
+	iptables -A FORWARD -i tun+ -j ACCEPT
 	iptables -A INPUT -i tun+ -p udp --dport 51413 -j ACCEPT
 	iptables -A INPUT -i tun+ -p tcp --dport 51413 -j ACCEPT
-	# Set default policies to drop all communication unless specifically allowed.
+	# Accept all outbound TUN connections and firewalled input on IPv6 (tun = VPN tunnel).
+	ip6tables -A OUTPUT -o tun+ -j ACCEPT
+	ip6tables -A FORWARD -i tun+ -j ACCEPT
+	ip6tables -A INPUT -i tun+ -p udp --dport 51413 -j ACCEPT
+	ip6tables -A INPUT -i tun+ -p tcp --dport 51413 -j ACCEPT
+	# Set default policies to drop all communication unless specifically allowed on IPv4.
 	iptables -P INPUT DROP
 	iptables -P OUTPUT DROP
 	iptables -P FORWARD DROP
+	# Set default policies to drop all communication unless specifically allowed on IPv6.
+	ip6tables -P INPUT DROP
+	ip6tables -P OUTPUT DROP
+	ip6tables -P FORWARD DROP
 	# Start all services.
 	for F in \$(ls -1 scripts/start-*.sh); do
 		./\${F} > /dev/null 2>&1
@@ -311,7 +439,7 @@ cat<<-STOPALL > ${BASE}/stop.sh
 	for F in \$(ls -1 scripts/stop-*.sh); do
 		./\${F} > /dev/null 2>&1
 	done
-	# Clear existing firewall rules.
+	# Clear existing IPv4 firewall rules.
 	iptables -P INPUT ACCEPT
 	iptables -P FORWARD ACCEPT
 	iptables -P OUTPUT ACCEPT
@@ -323,6 +451,18 @@ cat<<-STOPALL > ${BASE}/stop.sh
 	iptables -t nat -X
 	iptables -t mangle -F
 	iptables -t mangle -X
+	# Clear existing IPv6 firewall rules.
+	ip6tables -P INPUT ACCEPT
+	ip6tables -P FORWARD ACCEPT
+	ip6tables -P OUTPUT ACCEPT
+	ip6tables -F
+	ip6tables -X
+	ip6tables -t raw -F
+	ip6tables -t raw -X
+	ip6tables -t nat -F
+	ip6tables -t nat -X
+	ip6tables -t mangle -F
+	ip6tables -t mangle -X
 STOPALL
 chmod +x ${BASE}/stop.sh
 

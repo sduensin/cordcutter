@@ -9,8 +9,8 @@ function checkForGit() {
 	URL=$1
 	FOLDER=$2
 	
+	echo " - Installing ${FOLDER}"
 	if [ ! -d ${BASE}/${FOLDER} ]; then
-		echo " - Installing ${FOLDER}"
 		git clone ${URL}/${FOLDER}.git ${BASE}/${FOLDER} >> ${LOG} 2>&1
 		if [ "$?x" != "0x" ]; then
 			echo
@@ -67,14 +67,6 @@ function htpcDB() {
 	VAL="$3"
 	SQL="INSERT INTO setting (key, val) VALUES ('${KEY}', '${VAL}');"
 	sqlite3 ${DB} "${SQL}"
-}
-
-
-function iniSet() {
-	FILE="$1"
-	KEY="$2"
-	VAL="$3"
-	sed -i "s#^${KEY} =.*#${KEY} = $(printf '%q' ${VAL})#g" ${FILE}
 }
 
 
@@ -221,17 +213,16 @@ cat<<-STOPTRANSMISSION > ${BASE}/scripts/stop-transmission.sh
 	rm ${DATA}/transmission.pid
 STOPTRANSMISSION
 chmod +x ${BASE}/scripts/stop-transmission.sh
-# Start and stop the service to create the settings file if it doesn't exist.
+# Prime the settings file if it doesn't exist.
 CFG=${DATA}/settings.json
 if [ ! -e ${CFG} ]; then
-	${BASE}/scripts/start-transmission.sh >> ${LOG} 2>&1
-	# No pause needed, start script does it for us.
-	${BASE}/scripts/stop-transmission.sh >> ${LOG} 2>&1
-	sleep 1
-	# TODO See if we can prime this config
-	sed -i 's/"lpd-enabled": false/"lpd-enabled": true/g' ${CFG}
-	sed -i 's/"speed-limit-up": 100/"speed-limit-up": 200/g' ${CFG}
-	sed -i 's/"speed-limit-up-enabled": false/"speed-limit-up-enabled": true/g' ${CFG}
+	cat<<-TRANSMISSIONSETTINGS > ${CFG}
+		{
+		"lpd-enabled": true,
+		"speed-limit-up": 200,
+		"speed-limit-up-enabled": true
+		}
+	TRANSMISSIONSETTINGS
 fi
 
 
@@ -264,59 +255,69 @@ if [ ! -e ${DATA}/process.sh ]; then
 	PROCESS
 	chmod +x ${DATA}/process.sh
 fi
-# Start and stop the service to create the config file if it doesn't exist.
+# Prime the config file if it doesn't exist.
 CFG=${DATA}/config.ini
 if [ ! -e ${CFG} ]; then
-	${BASE}/scripts/start-SickRage.sh >> ${LOG} 2>&1
-	sleep 2
-	${BASE}/scripts/stop-SickRage.sh >> ${LOG} 2>&1
-	sleep 1
-	# TODO See if we can prime this config
-	iniSet ${CFG} rarbg 1
-	iniSet ${CFG} torrentz 1
-	iniSet ${CFG} elitetorrent 1
-	iniSet ${CFG} bitsnoop 1
-	iniSet ${CFG} nyaatorrents 1
-	iniSet ${CFG} btdigg 1
-	iniSet ${CFG} cpasbien 1
-	iniSet ${CFG} newpct 1
-	iniSet ${CFG} tokyotoshokan 1
-	iniSet ${CFG} limetorrents 1
-	iniSet ${CFG} torrent_host "http://localhost:8083"
-	iniSet ${CFG} torrent_path "${BASE}/mnt/Torrents/Complete"
-	iniSet ${CFG} torrent_auth_type none
-	iniSet ${CFG} torrent_username transmission
-	iniSet ${CFG} torrent_password transmission
-	iniSet ${CFG} dailysearch_frequency 10
-	iniSet ${CFG} api_key 95ef1b0d35d02068c9224e90b20cbf58
-	iniSet ${CFG} check_propers_interval 15m
-	iniSet ${CFG} update_frequency 24
-	iniSet ${CFG} process_method move
-	iniSet ${CFG} tv_download_dir "${BASE}/mnt/Torrents/Complete"
-	iniSet ${CFG} naming_custom_abd 1
-	iniSet ${CFG} create_missing_show_dirs 1
-	iniSet ${CFG} cur_commit_branch master
-	iniSet ${CFG} root_dirs "0|${BASE}/mnt/Shows"
-	iniSet ${CFG} naming_pattern "Season %0S/%SN - %0Sx%0E - %EN"
-	iniSet ${CFG} metadata_kodi "1|1|1|1|1|1|1|1|1|1"
-	iniSet ${CFG} naming_custom_sports 1
-	iniSet ${CFG} randomize_providers 1
-	iniSet ${CFG} process_automatically 1
-	iniSet ${CFG} launch_browser 0
-	iniSet ${CFG} branch master
-	iniSet ${CFG} unpack 1
-	iniSet ${CFG} move_associated_files 1
-	iniSet ${CFG} naming_multi_ep 16
-	iniSet ${CFG} torrent_method transmission
-	iniSet ${CFG} proxy_indexers 0
-	iniSet ${CFG} keep_processed_dir 0
-	iniSet ${CFG} subtitles_history 1
-	iniSet ${CFG} subtitles_hearing_impaired 1
-	iniSet ${CFG} subtitles_languages eng
-	iniSet ${CFG} SUBTITLES_SERVICES_LIST "\"addic7ed,legendastv,opensubtitles,podnapisi,shooter,subscenter,thesubdb,tvsubtitles,itasa\""
-	iniSet ${CFG} use_subtitles 1
-	iniSet ${CFG} SUBTITLES_SERVICES_ENABLED "0|0|0|1|1|1|1|1|0"
-	iniSet ${CFG} extra_scripts "${DATA}/process.sh"
+	cat<<-SICKRAGESETTINGS > ${CFG}
+		[RARBG]
+		rarbg = 1
+		[TORRENTZ]
+		torrentz = 1
+		[ELITETORRENT]
+		elitetorrent = 1
+		[BITSNOOP]
+		bitsnoop = 1
+		[NYAATORRENTS]
+		nyaatorrents = 1
+		[BTDIGG]
+		btdigg = 1
+		[CPASBIEN]
+		cpasbien = 1
+		[NEWPCT]
+		newpct = 1
+		[TOKYOTOSHOKAN]
+		tokyotoshokan = 1
+		[LIMETORRENTS]
+		limetorrents = 1
+		[TORRENT]
+		torrent_host = http://localhost:8083
+		torrent_path = ${BASE}/mnt/Torrents/Complete
+		torrent_auth_type = none
+		torrent_username = transmission
+		torrent_password = transmission
+		[General]
+		dailysearch_frequency = 10
+		api_key = 95ef1b0d35d02068c9224e90b20cbf58
+		check_propers_interval = 15m
+		update_frequency = 24
+		process_method = move
+		tv_download_dir = ${BASE}/mnt/Torrents/Complete
+		naming_custom_abd = 1
+		create_missing_show_dirs = 1
+		cur_commit_branch = master
+		root_dirs = 0|${BASE}/mnt/Shows
+		naming_pattern = Season %0S/%SN - %0Sx%0E - %EN
+		metadata_kodi = 1|1|1|1|1|1|1|1|1|1
+		naming_custom_sports = 1
+		randomize_providers = 1
+		process_automatically = 1
+		launch_browser = 0
+		branch = master
+		unpack = 1
+		move_associated_files = 1
+		naming_multi_ep = 16
+		torrent_method = transmission
+		proxy_indexers = 0
+		keep_processed_dir = 0
+		extra_scripts = ${DATA}/process.sh
+		[Subtitles]
+		subtitles_history = 1
+		subtitles_hearing_impaired = 1
+		subtitles_languages = eng
+		SUBTITLES_SERVICES_LIST = "addic7ed,legendastv,opensubtitles,podnapisi,shooter,subscenter,thesubdb,tvsubtitles,itasa"
+		use_subtitles = 1
+		SUBTITLES_SERVICES_ENABLED = 0|0|0|1|1|1|1|1|0
+	SICKRAGESETTINGS
 fi
 
 
@@ -341,7 +342,7 @@ chmod +x ${BASE}/scripts/stop-CouchPotatoServer.sh
 # Prime the settings file if it doesn't exist.
 CFG=${DATA}/settings.conf
 if [ ! -e ${CFG} ]; then
-	cat<<-SETTINGS > ${CFG}
+	cat<<-COUCHPOTATOSETTINGS > ${CFG}
 		[core]
 		launch_browser = False
 		port = 8082
@@ -349,7 +350,6 @@ if [ ! -e ${CFG} ]; then
 		dark_theme = 1
 		show_wizard = 0
 		data_dir = ${DATA}
-
 		[renamer]
 		from = ${BASE}/mnt/Torrents/Complete/
 		to = ${BASE}/mnt/Movies/
@@ -359,50 +359,38 @@ if [ ! -e ${CFG} ]; then
 		default_file_action = move
 		file_action = move
 		nfo_name = <filename>.<ext>-orig
-
 		[subtitle]
 		languages = en
 		enabled = 1
-
 		[blackhole]
 		enabled = 0
-
 		[transmission]
 		username = transmission
 		enabled = 1
 		host = http://localhost:8083
 		password = transmission
-
 		[newznab]
 		enabled = 0
-
 		[kickasstorrents]
 		seed_time = 0
 		seed_ratio = 0
-
 		[magnetdl]
 		seed_time = 0
 		enabled = 1
 		seed_ratio = 0
-
 		[rarbg]
 		enabled = 1
-
 		[thepiratebay]
 		seed_time = 0
 		enabled = 1
 		seed_ratio = 0
-
 		[torrentz]
 		seed_time = 0
 		seed_ratio = 0
-
 		[searcher]
 		preferred_method = torrent
-
 		[updater]
 		automatic = 0
-
 		[xbmc]
 		meta_extra_fanart = 1
 		meta_enabled = 1
@@ -412,11 +400,10 @@ if [ ! -e ${CFG} ]; then
 		meta_clear_art = 1
 		meta_extra_thumbs = 1
 		meta_disc_art = 1
-
 		[moviesearcher]
 		cron_hour = *
 		run_on_launch = 1
-	SETTINGS
+	COUCHPOTATOSETTINGS
 fi
 
 # === HTPC Manager ===

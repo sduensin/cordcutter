@@ -108,7 +108,7 @@ echo
 
 
 if [[ $EUID -ne 0 ]]; then
-	echo "!! The installer must be run using sudo."
+	echo "!! The installer must be run as root."
 	echo
 	exit 1
 fi
@@ -251,6 +251,17 @@ cat<<-STOPSICKRAGE > ${BASE}/scripts/stop-SickRage.sh
 	kill \$(cat ${DATA}/SickRage.pid)
 STOPSICKRAGE
 chmod +x ${BASE}/scripts/stop-SickRage.sh
+# Is our processing script in place?
+if [ ! -e ${DATA}/process.sh ]; then
+	cat<<-PROCESS > ${DATA}/process.sh
+		FOLDER=\$(dirname "\$2")
+		FILE=\$(basename \${FOLDER})
+		TORRENTID="\$(transmission-remote localhost:8083 -l | grep -F \${FILE} | awk '{print \$1}')" 
+		if [ ! -z \${TORRENTID} ]; then
+			transmission-remote localhost:8083 -t \${TORRENTID} -r 
+		fi 
+	PROCESS
+fi
 # Start and stop the service to create the config file if it doesn't exist.
 CFG=${DATA}/config.ini
 if [ ! -e ${CFG} ]; then
@@ -269,7 +280,7 @@ if [ ! -e ${CFG} ]; then
 	iniSet ${CFG} tokyotoshokan 1
 	iniSet ${CFG} limetorrents 1
 	iniSet ${CFG} torrent_host "http://localhost:8083"
-	iniSet ${CFG} torrent_path "/opt/htpc/mnt/Torrents/Complete"
+	iniSet ${CFG} torrent_path "${BASE}/mnt/Torrents/Complete"
 	iniSet ${CFG} torrent_auth_type none
 	iniSet ${CFG} torrent_username transmission
 	iniSet ${CFG} torrent_password transmission
@@ -278,11 +289,11 @@ if [ ! -e ${CFG} ]; then
 	iniSet ${CFG} check_propers_interval 15m
 	iniSet ${CFG} update_frequency 24
 	iniSet ${CFG} process_method move
-	iniSet ${CFG} tv_download_dir "/opt/htpc/mnt/Torrents/Complete"
+	iniSet ${CFG} tv_download_dir "${BASE}/mnt/Torrents/Complete"
 	iniSet ${CFG} naming_custom_abd 1
 	iniSet ${CFG} create_missing_show_dirs 1
 	iniSet ${CFG} cur_commit_branch master
-	iniSet ${CFG} root_dirs "0|/opt/htpc/mnt/Shows"
+	iniSet ${CFG} root_dirs "0|${BASE}/mnt/Shows"
 	iniSet ${CFG} naming_pattern "Season %0S/%SN - %0Sx%0E - %EN"
 	iniSet ${CFG} metadata_kodi "1|1|1|1|1|1|1|1|1|1"
 	iniSet ${CFG} naming_custom_sports 1
@@ -302,6 +313,7 @@ if [ ! -e ${CFG} ]; then
 	iniSet ${CFG} SUBTITLES_SERVICES_LIST "\"addic7ed,legendastv,opensubtitles,podnapisi,shooter,subscenter,thesubdb,tvsubtitles,itasa\""
 	iniSet ${CFG} use_subtitles 1
 	iniSet ${CFG} SUBTITLES_SERVICES_ENABLED "0|0|0|1|1|1|1|1|0"
+	iniSet ${CFG} extra_scripts "${DATA}/process.sh"
 fi
 
 
@@ -362,6 +374,10 @@ fi
 # === Main start and stop scripts ===
 cat<<-STARTALL > ${BASE}/start.sh
 	#!/bin/bash
+	if [[ $EUID -ne 0 ]]; then
+		echo "!! This application must be run as root."
+		exit 1
+	fi
 	cd ${BASE}
 	# Clear existing IPv4 firewall rules.
 	iptables -P INPUT ACCEPT
@@ -434,6 +450,10 @@ STARTALL
 chmod +x ${BASE}/start.sh
 cat<<-STOPALL > ${BASE}/stop.sh
 	#!/bin/bash
+	if [[ $EUID -ne 0 ]]; then
+		echo "!! This application must be run as root."
+		exit 1
+	fi
 	cd ${BASE}
 	# Stop all services.
 	for F in \$(ls -1 scripts/stop-*.sh); do

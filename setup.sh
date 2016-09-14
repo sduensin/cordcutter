@@ -90,6 +90,15 @@ FIRSTPACKAGE=1
 PORT=1194
 
 
+# Find our internal IP.
+INTERNAL="127.0.0.1"
+for IP in $(hostname -I); do
+	if [[ ${IP} =~ (^10\.)|(^172\.1[6-9]\.)|(^172\.2[0-9]\.)|(^172\.3[0-1]\.)|(^192\.168\.) ]]; then
+		INTERNAL="${IP}"
+	fi
+done
+
+
 # Clear the log.
 echo > ${LOG}
 
@@ -125,9 +134,11 @@ checkForPackages smartmontools sqlite libffi-dev libssl-dev
 
 
 echo " - Performing initial installation"
-mkdir -p ${BASE}/{mnt,pip,scripts,data}
+mkdir -p ${BASE}/{scripts,data}
 mkdir -p ${BASE}/pip/_cache
-echo ${RELEASE} > ${BASE}/release
+MNT=${BASE}/data/mnt
+mkdir -p ${MNT}
+echo ${RELEASE} > ${BASE}/data/release
 PIP=${BASE}/pip
 pip install pip --cache-dir ${PIP}/_cache --target ${PIP} >> ${LOG} 2>&1
 
@@ -196,13 +207,13 @@ chmod +x ${BASE}/scripts/stop-openvpn.sh
 
 # === Transmission ===
 echo " - Configuring Transmission"
-mkdir -p ${BASE}/mnt/Torrents/{Complete,Incomplete,Watch}
+mkdir -p ${MNT}/Torrents/{Complete,Incomplete,Watch}
 DATA=${BASE}/data/transmission
 mkdir -p ${DATA}
 # Startup and shutdown scripts.
 cat<<-STARTTRANSMISSION > ${BASE}/scripts/start-transmission.sh
 	#!/bin/bash
-	transmission-daemon --config-dir ${DATA} --allowed "192.168.*,127.0.*" -c ${BASE}/mnt/Torrents/Watch --encryption-preferred --global-seedratio 0.0 --incomplete-dir ${BASE}/mnt/Torrents/Incomplete --dht --port 8083 --no-auth --utp --download-dir ${BASE}/mnt/Torrents/Complete --logfile ${DATA}/transmission.log --log-debug --no-portmap
+	transmission-daemon --config-dir ${DATA} --allowed "192.168.*,127.0.*" -c ${MNT}/Torrents/Watch --encryption-preferred --global-seedratio 0.0 --incomplete-dir ${MNT}/Torrents/Incomplete --dht --port 8083 --no-auth --utp --download-dir ${MNT}/Torrents/Complete --logfile ${DATA}/transmission.log --log-debug --no-portmap
 	sleep 2
 	ps -C transmission-daemon | tail -n 1 | awk '{print \$1}' > ${DATA}/transmission.pid
 STARTTRANSMISSION
@@ -230,7 +241,7 @@ fi
 checkForGit https://github.com/SickRage SickRage
 DATA=${BASE}/data/SickRage
 mkdir -p ${DATA}
-mkdir -p ${BASE}/mnt/Shows
+mkdir -p ${MNT}/Shows
 # Startup and shutdown scripts.
 cat<<-STARTSICKRAGE > ${BASE}/scripts/start-SickRage.sh
 	#!/bin/bash
@@ -246,10 +257,11 @@ chmod +x ${BASE}/scripts/stop-SickRage.sh
 # Is our processing script in place?
 if [ ! -e ${DATA}/process.sh ]; then
 	cat<<-PROCESS > ${DATA}/process.sh
+		#!/bin/bash
 		FOLDER=\$(dirname "\$2")
 		FILE=\$(basename \${FOLDER})
 		TORRENTID="\$(transmission-remote localhost:8083 -l | grep -F \${FILE} | awk '{print \$1}')" 
-		if [ ! -z \${TORRENTID} ]; then
+		if [[ ! -z \${TORRENTID} ]]; then
 			transmission-remote localhost:8083 -t \${TORRENTID} -r 
 		fi 
 	PROCESS
@@ -281,7 +293,7 @@ if [ ! -e ${CFG} ]; then
 		limetorrents = 1
 		[TORRENT]
 		torrent_host = http://localhost:8083
-		torrent_path = ${BASE}/mnt/Torrents/Complete
+		torrent_path = ${MNT}/Torrents/Complete
 		torrent_auth_type = none
 		torrent_username = transmission
 		torrent_password = transmission
@@ -291,11 +303,11 @@ if [ ! -e ${CFG} ]; then
 		check_propers_interval = 15m
 		update_frequency = 24
 		process_method = move
-		tv_download_dir = ${BASE}/mnt/Torrents/Complete
+		tv_download_dir = ${MNT}/Torrents/Complete
 		naming_custom_abd = 1
 		create_missing_show_dirs = 1
 		cur_commit_branch = master
-		root_dirs = 0|${BASE}/mnt/Shows
+		root_dirs = 0|${MNT}/Shows
 		naming_pattern = Season %0S/%SN - %0Sx%0E - %EN
 		metadata_kodi = 1|1|1|1|1|1|1|1|1|1
 		naming_custom_sports = 1
@@ -326,7 +338,7 @@ checkForGit https://github.com/CouchPotato CouchPotatoServer
 pip install lxml --cache-dir ${PIP}/_cache --target ${PIP} >> ${LOG} 2>&1
 DATA=${BASE}/data/CouchPotatoServer
 mkdir -p ${DATA}
-mkdir -p ${BASE}/mnt/Movies
+mkdir -p ${MNT}/Movies
 # Startup and shutdown scripts.
 cat<<-STARTCOUCHPOTATO > ${BASE}/scripts/start-CouchPotatoServer.sh
 	#!/bin/bash
@@ -351,8 +363,8 @@ if [ ! -e ${CFG} ]; then
 		show_wizard = 0
 		data_dir = ${DATA}
 		[renamer]
-		from = ${BASE}/mnt/Torrents/Complete/
-		to = ${BASE}/mnt/Movies/
+		from = ${MNT}/Torrents/Complete/
+		to = ${MNT}/Movies/
 		cleanup = 1
 		enabled = 1
 		unrar = 1
@@ -583,5 +595,9 @@ chmod +x ${BASE}/stop.sh
 echo
 echo Finished!
 echo
-echo   You can now access your system at http://127.0.0.1:8080
+echo   You can now access your system at the following:
+echo     - HTPC Manager  http://${INTERNAL}:8080
+echo     - SickRage      http://${INTERNAL}:8081
+echo     - CouchPotato   http://${INTERNAL}:8082
+echo     - Transmission  http://${INTERNAL}:8083
 echo

@@ -75,6 +75,7 @@ function htpcDB() {
 #   8081 - SickRage Web UI
 #   8082 - Couch Potato Web UI
 #   8083 - Transmission Web UI
+#   8084 - PyWebDAV Server
 #  51413 - Transmission Inbound Port
 
 
@@ -116,7 +117,7 @@ fi
 
 
 # For setup script
-checkForPackages git python2.7 python-pip
+checkForPackages git python2.7 python2.7-dev python-pip
 
 # For OpenVPN
 checkForPackages openvpn
@@ -128,6 +129,7 @@ checkForPackages transmission-daemon
 checkForPackages unrar
 
 # For CouchPotato
+checkForPackages libxml2-dev libxslt1-dev
 
 # For HTPC Manager
 checkForPackages smartmontools sqlite libffi-dev libssl-dev
@@ -139,8 +141,17 @@ mkdir -p ${BASE}/pip/_cache
 MNT=${BASE}/data/mnt
 mkdir -p ${MNT}
 echo ${RELEASE} > ${BASE}/data/release
+# Install our own copy of pip using the distro packaged pip.
 PIP=${BASE}/pip
-pip install pip --cache-dir ${PIP}/_cache --target ${PIP} >> ${LOG} 2>&1
+if [ ! -d ${PIP}/pip ]; then
+	CACHE="--cache-dir"
+	pip install --help | grep -q "\--download-cache"
+	WHICHPIP=$?
+	if [ "x${WHICHPIP}" == "x0" ]; then
+		CACHE="--download-cache"
+	fi
+	pip install pip ${CACHE} ${PIP}/_cache --target ${PIP} >> ${LOG} 2>&1
+fi
 
 
 # === OpenVPN ===
@@ -207,6 +218,7 @@ chmod +x ${BASE}/scripts/stop-openvpn.sh
 
 # === Transmission ===
 echo " - Configuring Transmission"
+update-rc.d -f transmission-daemon remove >> ${LOG} 2>&1
 mkdir -p ${MNT}/Torrents/{Complete,Incomplete,Watch}
 DATA=${BASE}/data/transmission
 mkdir -p ${DATA}
@@ -335,7 +347,7 @@ fi
 
 # === Couch Potato ===
 checkForGit https://github.com/CouchPotato CouchPotatoServer
-pip install lxml --cache-dir ${PIP}/_cache --target ${PIP} >> ${LOG} 2>&1
+PYTHONPATH="${PIP}" python ${PIP}/pip install lxml --cache-dir ${PIP}/_cache --target ${PIP} >> ${LOG} 2>&1
 DATA=${BASE}/data/CouchPotatoServer
 mkdir -p ${DATA}
 mkdir -p ${MNT}/Movies
@@ -420,7 +432,7 @@ fi
 
 # === HTPC Manager ===
 checkForGit https://github.com/Hellowlol HTPC-Manager
-PYTHONPATH="${PIP}" pip install -r ${BASE}/HTPC-Manager/requirements.txt --cache-dir ${PIP}/_cache --target ${PIP} >> ${LOG} 2>&1
+PYTHONPATH="${PIP}" python ${PIP}/pip install -r ${BASE}/HTPC-Manager/requirements.txt --cache-dir ${PIP}/_cache --target ${PIP} >> ${LOG} 2>&1
 DATA=${BASE}/data/HTPC-Manager
 mkdir -p ${DATA}
 # Startup and shutdown scripts.
@@ -475,12 +487,42 @@ if [ ! -e ${DATA}/database.db ]; then
 fi
 
 
+# === PyWebDAV ===
+echo " - Installing PyWebDAV"
+PYTHONPATH="${PIP}" python ${PIP}/pip install PyWebDAV --cache-dir ${PIP}/_cache --target ${PIP} >> ${LOG} 2>&1
+DATA=${BASE}/data/PyWebDAV
+mkdir -p ${DATA}
+mkdir -p ${BASE}/PyWebDAV
+cat<<-DAVSERVER > ${BASE}/PyWebDAV/davserver
+	#!/usr/bin/python
+	import re
+	import sys
+	from pywebdav.server.server import run
+	if __name__ == '__main__':
+	   sys.argv[0] = re.sub(r'(-script\.pyw|\.exe)?$', '', sys.argv[0])
+	   sys.exit(run())
+DAVSERVER
+# Startup and shutdown scripts.
+cat<<-STARTPYWEBDAV > ${BASE}/scripts/start-PyWebDAV.sh
+	#!/bin/bash
+	cd ${BASE}/PyWebDAV
+	PYTHONPATH="${PIP}" python davserver -D ${MNT} -n -J -H 0.0.0.0 -P 8084 -l info >> ${DATA}/PyWebDAV.log 2>&1 &
+	ps auxw | grep "python davserver" | grep -v grep | awk '{print $2}' > ${DATA}/PyWebDAV.pid
+STARTPYWEBDAV
+chmod +x ${BASE}/scripts/start-PyWebDAV.sh
+cat<<-STOPPYWEBDAV > ${BASE}/scripts/stop-PyWebDAV.sh
+	#!/bin/bash
+	kill \$(cat ${DATA}/PyWebDAV.pid)
+STOPPYWEBDAV
+chmod +x ${BASE}/scripts/stop-PyWebDAV.sh
+
+
 # === Main start and stop scripts ===
 cat<<-STARTALL > ${BASE}/start.sh
 	#!/bin/bash
 	if [[ $EUID -ne 0 ]]; then
-		echo "!! This application must be run as root."
-		exit 1
+	   echo "!! This application must be run as root."
+	   exit 1
 	fi
 	cd ${BASE}
 	# Clear existing IPv4 firewall rules.
@@ -548,20 +590,20 @@ cat<<-STARTALL > ${BASE}/start.sh
 	ip6tables -P FORWARD DROP
 	# Start all services.
 	for F in \$(ls -1 scripts/start-*.sh); do
-		./\${F} > /dev/null 2>&1
+	   ./\${F} > /dev/null 2>&1
 	done
 STARTALL
 chmod +x ${BASE}/start.sh
 cat<<-STOPALL > ${BASE}/stop.sh
 	#!/bin/bash
 	if [[ $EUID -ne 0 ]]; then
-		echo "!! This application must be run as root."
-		exit 1
+	   echo "!! This application must be run as root."
+	   exit 1
 	fi
 	cd ${BASE}
 	# Stop all services.
 	for F in \$(ls -1 scripts/stop-*.sh); do
-		./\${F} > /dev/null 2>&1
+	   ./\${F} > /dev/null 2>&1
 	done
 	# Clear existing IPv4 firewall rules.
 	iptables -P INPUT ACCEPT
@@ -592,12 +634,16 @@ chmod +x ${BASE}/stop.sh
 
 # TODO Check all startup logs for errors
 
-echo
-echo Finished!
-echo
-echo   You can now access your system at the following:
-echo     - HTPC Manager  http://${INTERNAL}:8080
-echo     - SickRage      http://${INTERNAL}:8081
-echo     - CouchPotato   http://${INTERNAL}:8082
-echo     - Transmission  http://${INTERNAL}:8083
-echo
+cat<<-DONE
+
+Finished!
+
+  You can now access your system at the following:
+    - HTPC Manager  http://${INTERNAL}:8080
+    - SickRage      http://${INTERNAL}:8081
+    - CouchPotato   http://${INTERNAL}:8082
+    - Transmission  http://${INTERNAL}:8083
+    - WebDAV Share  http://${INTERNAL}:8084
+
+DONE
+

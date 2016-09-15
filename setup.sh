@@ -75,7 +75,8 @@ function htpcDB() {
 #   8081 - SickRage Web UI
 #   8082 - Couch Potato Web UI
 #   8083 - Transmission Web UI
-#   8084 - PyWebDAV Server
+#   8084 - Monit Web UI
+#   8888 - PyWebDAV Server
 #  51413 - Transmission Inbound Port
 
 
@@ -115,6 +116,15 @@ if [[ $EUID -ne 0 ]]; then
 	exit 1
 fi
 
+PIDLIST=(CouchPotatoServer HTPC-Manager PyWebDAV SickRage OpenVPN Transmission Monit)
+for F in ${PIDLIST[@]}; do
+	if [ -e ${BASE}/data/${F}/${F}.pid ]; then
+		echo "!! Do not run the installer while any servers are running.  (Found ${F}.)"
+		echo
+		exit 1
+	fi
+done
+
 
 # For setup script
 checkForPackages git python2.7 python2.7-dev python-pip
@@ -133,6 +143,9 @@ checkForPackages libxml2-dev libxslt1-dev
 
 # For HTPC Manager
 checkForPackages smartmontools sqlite libffi-dev libssl-dev
+
+# For MonIt
+checkForPackages monit
 
 
 echo " - Performing initial installation"
@@ -195,47 +208,50 @@ while IFS='' read -r LINE || [ -n "${LINE}" ]; do
 		fi
 	done
 done < ${VPN}
-DATA=${BASE}/data/openvpn
+DATA=${BASE}/data/OpenVPN
 mkdir -p ${DATA}
 cp -f "${VPN}" ${DATA}/.
 for F in ${COPYLIST[@]}; do
 	cp -f "${F}" ${DATA}/.
 done
 # Startup and shutdown scripts.
-cat<<-STARTOVPN > ${BASE}/scripts/start-openvpn.sh
+cat<<-STARTOVPN > ${BASE}/scripts/start-OpenVPN.sh
 	#!/bin/bash
+	if [ "\$1x" != "x" ]; then if [ -e ${DATA}/OpenVPN.pid ]; then rm ${DATA}/OpenVPN.pid; fi; fi
 	cd ${DATA}
-	openvpn --config "${VPN}" --daemon --writepid openvpn.pid --log-append openvpn.log
+	openvpn --config "${VPN}" --daemon --writepid OpenVPN.pid --log-append OpenVPN.log
 STARTOVPN
-chmod +x ${BASE}/scripts/start-openvpn.sh
-cat<<-STOPOVPN > ${BASE}/scripts/stop-openvpn.sh
+chmod +x ${BASE}/scripts/start-OpenVPN.sh
+cat<<-STOPOVPN > ${BASE}/scripts/stop-OpenVPN.sh
 	#!/bin/bash
-	kill \$(cat ${DATA}/openvpn.pid)
-	rm ${DATA}/openvpn.pid
+	kill \$(cat ${DATA}/OpenVPN.pid)
+	rm ${DATA}/OpenVPN.pid
 STOPOVPN
-chmod +x ${BASE}/scripts/stop-openvpn.sh
+chmod +x ${BASE}/scripts/stop-OpenVPN.sh
 
 
 # === Transmission ===
 echo " - Configuring Transmission"
 update-rc.d -f transmission-daemon remove >> ${LOG} 2>&1
+killall transmission-daemon >> ${LOG} 2>&1
 mkdir -p ${MNT}/Torrents/{Complete,Incomplete,Watch}
-DATA=${BASE}/data/transmission
+DATA=${BASE}/data/Transmission
 mkdir -p ${DATA}
 # Startup and shutdown scripts.
-cat<<-STARTTRANSMISSION > ${BASE}/scripts/start-transmission.sh
+cat<<-STARTTRANSMISSION > ${BASE}/scripts/start-Transmission.sh
 	#!/bin/bash
-	transmission-daemon --config-dir ${DATA} --allowed "192.168.*,127.0.*" -c ${MNT}/Torrents/Watch --encryption-preferred --global-seedratio 0.0 --incomplete-dir ${MNT}/Torrents/Incomplete --dht --port 8083 --no-auth --utp --download-dir ${MNT}/Torrents/Complete --logfile ${DATA}/transmission.log --log-debug --no-portmap
+	if [ "\$1x" != "x" ]; then if [ -e ${DATA}/Transmission.pid ]; then rm ${DATA}/Transmission.pid; fi; fi
+	transmission-daemon --config-dir ${DATA} --allowed "192.168.*,127.0.*" -c ${MNT}/Torrents/Watch --encryption-preferred --global-seedratio 0.0 --incomplete-dir ${MNT}/Torrents/Incomplete --dht --port 8083 --no-auth --utp --download-dir ${MNT}/Torrents/Complete --logfile ${DATA}/Transmission.log --log-info --no-portmap
 	sleep 2
-	ps -C transmission-daemon | tail -n 1 | awk '{print \$1}' > ${DATA}/transmission.pid
+	ps -C transmission-daemon | tail -n 1 | awk '{print \$1}' > ${DATA}/Transmission.pid
 STARTTRANSMISSION
-chmod +x ${BASE}/scripts/start-transmission.sh
-cat<<-STOPTRANSMISSION > ${BASE}/scripts/stop-transmission.sh
+chmod +x ${BASE}/scripts/start-Transmission.sh
+cat<<-STOPTRANSMISSION > ${BASE}/scripts/stop-Transmission.sh
 	#!/bin/bash
-	kill \$(cat ${DATA}/transmission.pid)
-	rm ${DATA}/transmission.pid
+	kill \$(cat ${DATA}/Transmission.pid)
+	rm ${DATA}/Transmission.pid
 STOPTRANSMISSION
-chmod +x ${BASE}/scripts/stop-transmission.sh
+chmod +x ${BASE}/scripts/stop-Transmission.sh
 # Prime the settings file if it doesn't exist.
 CFG=${DATA}/settings.json
 if [ ! -e ${CFG} ]; then
@@ -257,6 +273,7 @@ mkdir -p ${MNT}/Shows
 # Startup and shutdown scripts.
 cat<<-STARTSICKRAGE > ${BASE}/scripts/start-SickRage.sh
 	#!/bin/bash
+	if [ "\$1x" != "x" ]; then if [ -e ${DATA}/SickRage.pid ]; then rm ${DATA}/SickRage.pid; fi; fi
 	cd ${BASE}/SickRage
 	python SickBeard.py --nolaunch --daemon --pidfile ${DATA}/SickRage.pid --port 8081 --datadir ${DATA} 
 STARTSICKRAGE
@@ -334,6 +351,8 @@ if [ ! -e ${CFG} ]; then
 		proxy_indexers = 0
 		keep_processed_dir = 0
 		extra_scripts = ${DATA}/process.sh
+		;handle_reverse_proxy = 1
+		;web_root = "/tv"
 		[Subtitles]
 		subtitles_history = 1
 		subtitles_hearing_impaired = 1
@@ -354,6 +373,7 @@ mkdir -p ${MNT}/Movies
 # Startup and shutdown scripts.
 cat<<-STARTCOUCHPOTATO > ${BASE}/scripts/start-CouchPotatoServer.sh
 	#!/bin/bash
+	if [ "\$1x" != "x" ]; then if [ -e ${DATA}/CouchPotatoServer.pid ]; then rm ${DATA}/CouchPotatoServer.pid; fi; fi
 	cd ${BASE}/CouchPotatoServer
 	PYTHONPATH="${PIP}" python CouchPotato.py --daemon --pid_file ${DATA}/CouchPotatoServer.pid --data_dir ${DATA} 
 STARTCOUCHPOTATO
@@ -438,6 +458,7 @@ mkdir -p ${DATA}
 # Startup and shutdown scripts.
 cat<<-STARTHTPC > ${BASE}/scripts/start-HTPC-Manager.sh
 	#!/bin/bash
+	if [ "\$1x" != "x" ]; then if [ -e ${DATA}/HTPC-Manager.pid ]; then rm ${DATA}/HTPC-Manager.pid; fi; fi
 	cd ${BASE}/HTPC-Manager
 	PYTHONPATH="${PIP}" python Htpc.py --daemon --datadir ${DATA} --pid ${DATA}/HTPC-Manager.pid
 STARTHTPC
@@ -464,9 +485,9 @@ if [ ! -e ${DATA}/database.db ]; then
 	htpcDB ${DB} "stats_psutil_enabled" "on"
 	htpcDB ${DB} "stats_enable" "on"
 	htpcDB ${DB} "stats_name" "System"
-	htpcDB ${DB} "stats_filesystem" "cgroup tmpfs fusectl fuse.lxcfs fuse.gvfsd-fuse"
+	htpcDB ${DB} "stats_filesystem" "cgroup tmpfs fusectl fuse.lxcfs fuse.gvfsd-fuse rpc_pipefs"
 	htpcDB ${DB} "transmission_enable" "on"
-	htpcDB ${DB} "transmission_name" "Transmission"
+	htpcDB ${DB} "transmission_name" "Torrents"
 	htpcDB ${DB} "transmission_password" "transmission"
 	htpcDB ${DB} "transmission_rpcbasepath" "/transmission/"
 	htpcDB ${DB} "transmission_port" "8083"
@@ -476,14 +497,16 @@ if [ ! -e ${DATA}/database.db ]; then
 	htpcDB ${DB} "sickrage_port" "8081"
 	htpcDB ${DB} "sickrage_host" "localhost"
 	htpcDB ${DB} "sickrage_enable" "on"
-	htpcDB ${DB} "sickrage_name" "SickRage"
+	htpcDB ${DB} "sickrage_name" "Television"
 	htpcDB ${DB} "sickrage_apikey" "95ef1b0d35d02068c9224e90b20cbf58"
 	htpcDB ${DB} "couchpotato_host" "localhost"
 	htpcDB ${DB} "couchpotato_basepath" "/"
 	htpcDB ${DB} "couchpotato_apikey" "5bf1b41b945d444ba9050e88869e6e64"
 	htpcDB ${DB} "couchpotato_port" "8082"
-	htpcDB ${DB} "couchpotato_name" "CouchPotato"
+	htpcDB ${DB} "couchpotato_name" "Movies"
 	htpcDB ${DB} "couchpotato_enable" "on"
+	htpcDB ${DB} "custom_urls" '[{"name":"SickRage", "url":"http://'${INTERNAL}':8081"},{"name":"CouchPotato", "url":"http://'${INTERNAL}':8082"},{"name":"Transmission", "url":"http://'${INTERNAL}':8083"},{"name":"Monit", "url":"http://'${INTERNAL}':8084"}]'
+	htpcDB ${DB} "menu_order" "nav-sickrage,nav-couchpotato,nav-transmission,nav-stats,,,"
 fi
 
 
@@ -505,16 +528,81 @@ DAVSERVER
 # Startup and shutdown scripts.
 cat<<-STARTPYWEBDAV > ${BASE}/scripts/start-PyWebDAV.sh
 	#!/bin/bash
+	if [ "\$1x" != "x" ]; then if [ -e ${DATA}/PyWebDAV.pid ]; then rm ${DATA}/PyWebDAV.pid; fi; fi
 	cd ${BASE}/PyWebDAV
-	PYTHONPATH="${PIP}" python davserver -D ${MNT} -n -J -H 0.0.0.0 -P 8084 -l info >> ${DATA}/PyWebDAV.log 2>&1 &
-	ps auxw | grep "python davserver" | grep -v grep | awk '{print $2}' > ${DATA}/PyWebDAV.pid
+	PYTHONPATH="${PIP}" python davserver -D ${MNT} -n -J -H 0.0.0.0 -P 8888 -l warning >> ${DATA}/PyWebDAV.log 2>&1 &
+	ps auxw | grep "python davserver" | grep -v grep | awk '{print \$2}' > ${DATA}/PyWebDAV.pid
 STARTPYWEBDAV
 chmod +x ${BASE}/scripts/start-PyWebDAV.sh
 cat<<-STOPPYWEBDAV > ${BASE}/scripts/stop-PyWebDAV.sh
 	#!/bin/bash
 	kill \$(cat ${DATA}/PyWebDAV.pid)
+	rm ${DATA}/PyWebDAV.pid
 STOPPYWEBDAV
 chmod +x ${BASE}/scripts/stop-PyWebDAV.sh
+
+
+# === MonIt ===
+echo " - Configuring Monit"
+update-rc.d -f monit remove >> ${LOG} 2>&1
+killall monit >> ${LOG} 2>&1
+DATA=${BASE}/data/Monit
+mkdir -p ${DATA}
+cat<<-MONIT > ${DATA}/Monit.conf
+	set daemon 120 with start delay 60
+	set httpd port 8084
+	   allow 192.168.0.0/16
+	   allow 172.16.0.0/12
+	   allow 10.0.0.0/8
+           allow 127.0.0.1
+	set logfile ${DATA}/Monit.log
+	set pidfile ${DATA}/Monit.pid
+	set statefile ${DATA}/Monit.state
+	set idfile ${DATA}/Monit.id
+
+	check process OpenVPN with pidfile ${BASE}/data/OpenVPN/OpenVPN.pid
+	   start program = "${BASE}/scripts/start-OpenVPN.sh x"
+	   stop  program = "${BASE}/scripts/stop-OpenVPN.sh"
+	   if failed host google.com port 80 protocol http for 2 cycles then restart
+
+	check process HTPCManager with pidfile ${BASE}/data/HTPC-Manager/HTPC-Manager.pid
+	   start program = "${BASE}/scripts/start-HTPC-Manager.sh x"
+	   stop  program = "${BASE}/scripts/stop-HTPC-Manager.sh"
+	   if failed port 8080 protocol http for 2 cycles then restart
+
+	check process SickRage with pidfile ${BASE}/data/SickRage/SickRage.pid
+	   start program = "${BASE}/scripts/start-SickRage.sh x"
+	   stop  program = "${BASE}/scripts/stop-SickRage.sh"
+	   if failed port 8081 protocol http for 2 cycles then restart
+
+	check process CouchPotatoServer with pidfile ${BASE}/data/CouchPotatoServer/CouchPotatoServer.pid
+	   start program = "${BASE}/scripts/start-CouchPotatoServer.sh x"
+	   stop  program = "${BASE}/scripts/stop-CouchPotatoServer.sh"
+	   if failed port 8082 protocol http for 2 cycles then restart
+
+	check process Transmission with pidfile ${BASE}/data/Transmission/Transmission.pid
+	   start program = "${BASE}/scripts/start-Transmission.sh x"
+	   stop  program = "${BASE}/scripts/stop-Transmission.sh"
+	   if failed port 8083 protocol http for 2 cycles then restart
+
+	check process PyWebDAV with pidfile ${BASE}/data/PyWebDAV/PyWebDAV.pid
+	   start program = "${BASE}/scripts/start-PyWebDAV.sh x"
+	   stop  program = "${BASE}/scripts/stop-PyWebDAV.sh"
+	   if failed port 8888 protocol http for 2 cycles then restart
+MONIT
+chmod 700 ${DATA}/Monit.conf
+# Startup and shutdown scripts.
+cat<<-STARTMONIT > ${BASE}/scripts/start-Monit.sh
+	#!/bin/bash
+	if [ "\$1x" != "x" ]; then if [ -e ${DATA}/Monit.pid ]; then rm ${DATA}/Monit.pid; fi; fi
+	monit -c ${DATA}/Monit.conf
+STARTMONIT
+chmod +x ${BASE}/scripts/start-Monit.sh
+cat<<-STOPMONIT > ${BASE}/scripts/stop-Monit.sh
+	#!/bin/bash
+	kill \$(cat ${DATA}/Monit.pid)
+STOPMONIT
+chmod +x ${BASE}/scripts/stop-Monit.sh
 
 
 # === Main start and stop scripts ===
@@ -632,8 +720,6 @@ cat<<-STOPALL > ${BASE}/stop.sh
 STOPALL
 chmod +x ${BASE}/stop.sh
 
-# TODO Check all startup logs for errors
-
 cat<<-DONE
 
 Finished!
@@ -643,7 +729,8 @@ Finished!
     - SickRage      http://${INTERNAL}:8081
     - CouchPotato   http://${INTERNAL}:8082
     - Transmission  http://${INTERNAL}:8083
-    - WebDAV Share  http://${INTERNAL}:8084
+    - Monit         http://${INTERNAL}:8084
+    - WebDAV Share  http://${INTERNAL}:8888
 
 DONE
 

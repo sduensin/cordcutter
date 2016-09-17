@@ -82,8 +82,8 @@ function htpcDB() {
 
 # Some common values.
 RELEASE=1
-BASE=/opt/htpc
-TITLE="HTPC Automated Installer  (Release ${RELEASE})"
+BASE=/opt/cordcutter
+TITLE="Cord Cutter  (Release ${RELEASE})"
 SCRIPT=$0
 NAME=`basename ${0%.*}`
 findPath "${BASH_SOURCE[0]}" ; SCRIPTDIR="${RESULT}"

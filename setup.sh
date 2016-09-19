@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# TODO Add to /etc/rc.local
+
 
 :<<MIT
 

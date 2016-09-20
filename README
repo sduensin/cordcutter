@@ -4,9 +4,77 @@ Cord Cutter makes it easy to build your own personal video server.
 Share content with every screen in your home!
 
 Cord Cutter is an easy-to-install integrated video download manager and
-streaming sytem.
+streaming system.
 
 It is composed of several best-of-breed open-source software components all
 designed to work nicely together.
 
 And did we mention it's free?
+
+
+
+INSTALLATION
+
+Cord Cutter has been designed for and tested against Debian, Ubuntu, and
+Raspbian.  Installation is intended to be performed on a fresh system
+although efforts have been made to minimize the number of system-wide
+changes made by Cord Cutter (see below).
+
+After installing your OS, copy the setup script into a folder.  You will
+also need a working OpenVPN configuration file (or files).  Place these in
+the same folder as setup.sh.  Once everything is in place, run setup.sh as
+root or using sudo.  There are no options.  It either works, or you'll
+receive a message describing what went wrong.
+
+If your OpenVPN configuration file references other files, they will be
+copied along with the ovpn file... unless they are referenced using
+path names.  In this case, they will be left alone for you to manage.
+
+
+
+UPGRADING / CHANGING VPNs
+
+To upgrade to a new release, simply download the new setup.sh and run it.
+If you wish to change VPN providers, place the new configuration files next
+to setup.sh and run it again.
+
+
+
+CHANGES MADE
+
+The setup script places everything in /opt/cordcutter.  It will check your
+system for needed packages and install anything missing.  Aside from a few
+system packages, everything will be downloaded and placed into
+/opt/cordcutter.
+
+NOTE:  If you already have 'transmission-daemon' or 'monit' installed, they
+will be removed from the normal system startup every time you run setup.sh.
+
+
+
+USER DATA
+
+Everything created by the various components of Cord Cutter is stored under
+/opt/cordcutter/data.  This is the only folder you need to back up if you
+wish to migrate to a new system.  Anything you edit under the data folder
+will be left alone by setup.sh.  Changes made to anything *outside* this
+folder are likely to be lost the next time setup.sh is run.
+
+
+
+WARNING
+
+A script named stop.sh is provided along with start.sh.  Be careful with
+stop.sh - it will tear down the firewall after it *attempts* to stop all the
+scripts.  If a torrent is running at this time and transmission-daemon fails
+to stop, you may leak data outside the VPN.  Under normal use, stop.sh is
+never called.  It is provided for troubleshooting only.
+
+
+
+TROUBLESHOOTING
+
+Should something not work properly, every component of Cord Cutter generates
+a log file in the corresponding folder under the data directory.  The
+contents of these logs should be enough to help figure out what the problem
+is or to provide more details to assist when asking for help.

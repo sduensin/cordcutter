@@ -1,7 +1,5 @@
 #!/bin/bash
 
-# TODO Add to /etc/rc.local
-
 
 :<<MIT
 
@@ -751,11 +749,22 @@ cat<<-STOPALL > ${BASE}/stop.sh
 STOPALL
 chmod +x ${BASE}/stop.sh
 
+
+# === Start on Boot ===
+grep -qF "${BASE}" /etc/rc.local
+INRCLOCAL=$?
+if [ "x${INRCLOCAL}" != "x0" ]; then
+	sed -i 's#^exit 0#'${BASE}/start.sh'#g' /etc/rc.local
+	echo "exit 0" >> /etc/rc.local
+fi
+
+
 cat<<-DONE
 
 Finished!
 
-  You can now access your system at the following:
+  After rebooting, you will be able to access your system at the following:
+
     - HTPC Manager  http://${INTERNAL}:8080
     - SickRage      http://${INTERNAL}:8081
     - CouchPotato   http://${INTERNAL}:8082

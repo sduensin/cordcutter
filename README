@@ -62,6 +62,15 @@ folder are likely to be lost the next time setup.sh is run.
 
 
 
+MOVING USER DATA
+
+You can move the user data folder to a network share or another drive using
+network mounts or symlinks.  If you decide to relocate the data folder, be
+sure the Monit.conf file remains mode 700 (chmod 700 Monit.conf) and
+process.sh remains executable (chmod +x process.sh).
+
+
+
 WARNING
 
 A script named stop.sh is provided along with start.sh.  Be careful with

@@ -317,7 +317,7 @@ if [ ! -e ${DATA}/process.sh ]; then
 	cat<<-PROCESS > ${DATA}/process.sh
 		#!/bin/bash
 		FOLDER=\$(dirname "\$2")
-		FILE=\$(basename \${FOLDER})
+		FILE=\$(basename "\${FOLDER}")
 		TORRENTID="\$(transmission-remote localhost:8083 -l | grep -F \${FILE} | awk '{print \$1}')" 
 		if [[ ! -z \${TORRENTID} ]]; then
 			transmission-remote localhost:8083 -t \${TORRENTID} -r 
@@ -331,8 +331,6 @@ if [ ! -e ${CFG} ]; then
 	cat<<-SICKRAGESETTINGS > ${CFG}
 		[RARBG]
 		rarbg = 1
-		[TORRENTZ]
-		torrentz = 1
 		[ELITETORRENT]
 		elitetorrent = 1
 		[BITSNOOP]
@@ -341,10 +339,10 @@ if [ ! -e ${CFG} ]; then
 		nyaatorrents = 1
 		[BTDIGG]
 		btdigg = 1
-		[CPASBIEN]
-		cpasbien = 1
 		[NEWPCT]
 		newpct = 1
+		[THEPIRATEBAY]
+		thepiratebay = 1
 		[TOKYOTOSHOKAN]
 		tokyotoshokan = 1
 		[LIMETORRENTS]
@@ -578,12 +576,14 @@ killall monit >> ${LOG} 2>&1
 DATA=${BASE}/data/Monit
 mkdir -p ${DATA}
 cat<<-MONIT > ${DATA}/Monit.conf
-	set daemon 120 with start delay 60
+	set daemon 300 with start delay 60
+	
 	set httpd port 8084
 	   allow 192.168.0.0/16
 	   allow 172.16.0.0/12
 	   allow 10.0.0.0/8
-           allow 127.0.0.1
+	   allow 127.0.0.1
+	   
 	set logfile ${DATA}/Monit.log
 	set pidfile ${DATA}/Monit.pid
 	set statefile ${DATA}/Monit.state
@@ -592,32 +592,27 @@ cat<<-MONIT > ${DATA}/Monit.conf
 	check process OpenVPN with pidfile ${BASE}/data/OpenVPN/OpenVPN.pid
 	   start program = "${BASE}/scripts/start-OpenVPN.sh x"
 	   stop  program = "${BASE}/scripts/stop-OpenVPN.sh"
-	   if failed host google.com port 80 protocol http for 2 cycles then restart
+	   if failed host google.com port 80 protocol http for 3 cycles then restart
 
 	check process HTPCManager with pidfile ${BASE}/data/HTPC-Manager/HTPC-Manager.pid
 	   start program = "${BASE}/scripts/start-HTPC-Manager.sh x"
 	   stop  program = "${BASE}/scripts/stop-HTPC-Manager.sh"
-	   if failed port 8080 protocol http for 2 cycles then restart
 
 	check process SickRage with pidfile ${BASE}/data/SickRage/SickRage.pid
 	   start program = "${BASE}/scripts/start-SickRage.sh x"
 	   stop  program = "${BASE}/scripts/stop-SickRage.sh"
-	   if failed port 8081 protocol http for 2 cycles then restart
 
 	check process CouchPotatoServer with pidfile ${BASE}/data/CouchPotatoServer/CouchPotatoServer.pid
 	   start program = "${BASE}/scripts/start-CouchPotatoServer.sh x"
 	   stop  program = "${BASE}/scripts/stop-CouchPotatoServer.sh"
-	   if failed port 8082 protocol http for 2 cycles then restart
 
 	check process Transmission with pidfile ${BASE}/data/Transmission/Transmission.pid
 	   start program = "${BASE}/scripts/start-Transmission.sh x"
 	   stop  program = "${BASE}/scripts/stop-Transmission.sh"
-	   if failed port 8083 protocol http for 2 cycles then restart
 
 	check process PyWebDAV with pidfile ${BASE}/data/PyWebDAV/PyWebDAV.pid
 	   start program = "${BASE}/scripts/start-PyWebDAV.sh x"
 	   stop  program = "${BASE}/scripts/stop-PyWebDAV.sh"
-	   if failed port 8888 protocol http for 2 cycles then restart
 MONIT
 chmod 700 ${DATA}/Monit.conf
 # Startup and shutdown scripts.
